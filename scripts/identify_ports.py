@@ -41,14 +41,21 @@ def main() -> None:
 
     baseline = {port: read_positions(bus) for port, bus in buses.items()}
 
-    print("\n>>> Wiggle the LEADER arm (the one you hold) for 5 seconds... <<<\n")
-    time.sleep(5)
+    print("\n>>> Wiggle the LEADER arm (the one you hold). Watching for up to 60s... <<<\n")
 
-    deltas = {}
-    for port, bus in buses.items():
-        now = read_positions(bus)
-        deltas[port] = sum(abs(now[m] - baseline[port][m]) for m in now)
-        print(f"{port}: total movement = {deltas[port]} ticks")
+    deltas = {port: 0 for port in buses}
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        time.sleep(0.3)
+        for port, bus in buses.items():
+            now = read_positions(bus)
+            deltas[port] = sum(abs(now[m] - baseline[port][m]) for m in now)
+        moved = [p for p, d in deltas.items() if d > 300]
+        if len(moved) == 1 and min(deltas.values()) < 100:
+            break
+
+    for port, delta in deltas.items():
+        print(f"{port}: total movement = {delta} ticks")
 
     leader = max(deltas, key=deltas.get)
     follower = min(deltas, key=deltas.get)
@@ -56,16 +63,18 @@ def main() -> None:
     for bus in buses.values():
         bus.disconnect()
 
-    if deltas[leader] < 50:
+    if deltas[leader] < 300:
         raise SystemExit("\nNeither arm moved enough — run again and wiggle harder.")
+    if deltas[follower] > 100:
+        raise SystemExit("\nBoth arms moved — hold the follower still and run again.")
 
     print(f"\nLEADER   = {leader}")
     print(f"FOLLOWER = {follower}")
     print("\nTeleoperate with:\n")
     print(
         "lerobot-teleoperate \\\n"
-        f"  --robot.type=so_follower --robot.port={follower} --robot.id=my_follower \\\n"
-        f"  --teleop.type=so_leader --teleop.port={leader} --teleop.id=my_leader"
+        f"  --robot.type=so101_follower --robot.port={follower} --robot.id=my_follower \\\n"
+        f"  --teleop.type=so101_leader --teleop.port={leader} --teleop.id=my_leader"
     )
 
 
