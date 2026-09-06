@@ -13,10 +13,10 @@ arm, and report success rate over 20+ evaluation trials.
 
 ## Project checklist
 
-- [ ] **1. Environment setup** — install `lerobot`, verify USB connections to both arms
-- [ ] **2. Motor setup & calibration** — configure motor IDs, calibrate leader and follower
-- [ ] **3. Camera setup** — find camera indices, mount overhead + wrist views, verify streams
-- [ ] **4. Teleoperation test** — leader drives follower smoothly at full control rate
+- [x] **1. Environment setup** — install `lerobot`, verify USB connections to both arms
+- [x] **2. Motor setup & calibration** — configure motor IDs, calibrate leader and follower
+- [x] **3. Camera setup** — find camera indices, mount overhead + wrist views, verify streams
+- [x] **4. Teleoperation test** — leader drives follower smoothly at full control rate
 - [ ] **5. Task & scene design** — fixed workspace, chosen props, consistent lighting
 - [ ] **6. Record dataset** — ~50 episodes, push to Hugging Face Hub
 - [ ] **7. Sanity-check data** — visualize episodes, prune bad ones
