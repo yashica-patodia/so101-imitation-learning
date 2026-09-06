@@ -18,8 +18,8 @@ Usage:
 import argparse
 import time
 
-from lerobot.robots.so_follower import SOFollower, SOFollowerConfig
-from lerobot.teleoperators.so_leader import SOLeader, SOLeaderConfig
+from lerobot.robots.so_follower import SOFollower, SOFollowerRobotConfig
+from lerobot.teleoperators.so_leader import SOLeader, SOLeaderTeleopConfig
 
 
 def main() -> None:
@@ -28,12 +28,12 @@ def main() -> None:
     parser.add_argument("--follower-port", required=True)
     parser.add_argument("--seconds", type=float, default=20)
     parser.add_argument("--fps", type=float, default=30)
-    parser.add_argument("--max-relative-target", type=float, default=20)
+    parser.add_argument("--max-relative-target", type=float, default=20.0)
     args = parser.parse_args()
 
-    leader = SOLeader(SOLeaderConfig(port=args.leader_port, id="my_leader"))
+    leader = SOLeader(SOLeaderTeleopConfig(port=args.leader_port, id="my_leader"))
     follower = SOFollower(
-        SOFollowerConfig(
+        SOFollowerRobotConfig(
             port=args.follower_port,
             id="my_follower",
             max_relative_target=args.max_relative_target,
@@ -63,8 +63,14 @@ def main() -> None:
             if leftover > 0:
                 time.sleep(leftover)
     finally:
-        leader.disconnect()
-        follower.disconnect()
+        for arm, name in ((leader, "leader"), (follower, "follower")):
+            try:
+                arm.disconnect()
+            except Exception as exc:
+                print(f"WARNING: {name} disconnect error (results still valid): {exc}")
+
+    if not errors:
+        raise SystemExit("No tracking data collected — the loop never completed a cycle.")
 
     print(f"\n{'joint':<20}{'mean':>8}{'p95':>8}{'max':>8}   (degrees; gripper in 0-100 units)")
     worst_mean = 0.0
