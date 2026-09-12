@@ -29,7 +29,7 @@ print("Reading for 20s — slowly close the jaws by hand until they JUST touch, 
 print("then open fully. Watch the numbers:\n")
 
 readings = []
-t_end = time.time() + 20
+t_end = time.time() + 40
 while time.time() < t_end:
     pos = bus.sync_read("Present_Position", normalize=False)["gripper"]
     readings.append(pos)
