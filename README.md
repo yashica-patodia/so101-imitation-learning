@@ -1,39 +1,68 @@
-# SO-101 Imitation Learning — Foundation Project
+# SO-101 nano grasping policy
 
-End-to-end imitation learning on a LeRobot SO-100/SO-101 leader-follower arm pair:
-teleoperation → data collection → ACT policy training → real-robot evaluation.
+A small transformer policy that makes a LeRobot SO-101 arm reach and close its
+gripper on an object placed in front of it, built as a comparison of two vision
+encoders under one shared probe head: frozen DINOv2 (baseline) versus a masked
+autoencoder trained from scratch on the robot's own pixels (ours), following the
+evaluation protocol of the OctoSense paper (arXiv 2606.27317).
 
-**Hardware:** SO-100/SO-101 leader + follower pair, 2 cameras (overhead + wrist).
+Start with [docs/proposal.md](docs/proposal.md), then [docs/plan.md](docs/plan.md).
 
-## Goal
-
-Train an [ACT (Action Chunking Transformer)](https://arxiv.org/abs/2304.13705) policy
-on ~50 teleoperated demonstrations of a pick-and-place task, deploy it on the real
-arm, and report success rate over 20+ evaluation trials.
-
-## Project checklist
-
-- [x] **1. Environment setup** — install `lerobot`, verify USB connections to both arms
-- [x] **2. Motor setup & calibration** — configure motor IDs, calibrate leader and follower
-- [x] **3. Camera setup** — find camera indices, mount overhead + wrist views, verify streams
-- [x] **4. Teleoperation test** — leader drives follower smoothly at full control rate
-- [ ] **5. Task & scene design** — fixed workspace, chosen props, consistent lighting
-- [ ] **6. Record dataset** — ~50 episodes, push to Hugging Face Hub
-- [ ] **7. Sanity-check data** — visualize episodes, prune bad ones
-- [ ] **8. Train ACT** — on free GPU (Kaggle/Colab), track with W&B
-- [ ] **9. Evaluate on robot** — 20+ trials, success-rate table, record videos
-- [ ] **10. Write up results** — README with videos, numbers, and failure analysis
-
-## Repository layout (planned)
+## Repository map
 
 ```
-configs/        # teleop, recording, and training configs
-scripts/        # setup, recording, and eval helper scripts
-notebooks/      # training notebook for Kaggle/Colab
-eval/           # evaluation protocol + results
-docs/           # setup notes, calibration log, lessons learned
+docs/               proposal, 18-step plan, design decisions, calibration log
+robot/              hardware helpers: find ports, teleop tracking check, gripper calibration
+notebooks/          Kaggle notebooks, one per phase (01 = download + trim + extract)
+nano_vla/           the Python package
+  config.py         every constant: rates, window, horizon, resolutions, model sizes
+  data/
+    download.py     per-file Hugging Face download with retries
+    lerobot_meta.py LeRobot v3.0 metadata + parquet rows, no lerobot dependency
+    video.py        PyAV sequential decoding, resizing
+    trim.py         gripper-close detection, time-grid sampling
+    dino.py         frozen DINOv2 patch features
+    extract.py      CLI: download -> trim -> one .npz per episode (features, frames, joints)
+    windows.py      EpisodeSet / WindowDataset: 1 s context -> next 1 s of joints
+  models/
+    layers.py       transformer block, token embedder (time + patch + modality)
+    mae.py          encoder, OctoSense-style masking, MAE with light decoder
+    probe.py        cross-attention action probe (HORIZON queries -> joints)
+  train/
+    common.py       device, seeds, dataset assembly, checkpoints, logging
+    evaluate.py     per-joint error vs hold-last and linear baselines
+    train_mae.py    stage 1 pretraining on feature tokens
+    train_probe.py  stage 2: frozen probe / fine-tune / from-scratch policy
+tests/              small synthetic tests (trim logic, model shapes)
+data/, outputs/     local scratch, git-ignored
 ```
 
-## Results
+## Pipeline
 
-_To be filled in: dataset link, success-rate table, demo videos._
+```bash
+# Phase 1 (Kaggle, notebooks/kaggle_01_extract.ipynb, or locally):
+python -m nano_vla.data.extract --repo-id 5hadytru/so101_grasp_1 --work data/hf/grasp_1 --out data/features/grasp_1
+
+# Baseline arm, direct policy on frozen DINOv2 features:
+python -m nano_vla.train.train_probe --scratch --features data/features/grasp_1 --out outputs/dino_policy
+
+# Feature-token MAE pretraining + frozen probe (representation test):
+python -m nano_vla.train.train_mae --features data/features/grasp_1 --out outputs/mae
+python -m nano_vla.train.train_probe --mae outputs/mae/best.pt --features data/features/grasp_1 --out outputs/mae_probe
+
+# Fine-tune a probe on our own episodes:
+python -m nano_vla.train.train_probe --mae outputs/mae/best.pt --init-probe outputs/mae_probe/best.pt \
+    --stats outputs/mae_probe/stats.npz --features data/features/ours --out outputs/probe_ours --epochs 10
+
+# Tests:
+python -m pytest tests -q
+```
+
+`train_probe.py` prints per-horizon-step mean absolute error in raw joint units
+next to hold-last and linear-extrapolation baselines; a policy has to beat both
+before it goes near the robot.
+
+## Hardware
+
+SO-100/SO-101 leader + follower, overhead + wrist cameras, M4 MacBook. Setup and
+calibration notes: [docs/calibration-log.md](docs/calibration-log.md).
