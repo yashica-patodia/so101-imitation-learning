@@ -23,6 +23,10 @@ def decode_at(path: str | Path, wanted: list[float], tol: float = 0.02) -> np.nd
         stream = c.streams.video[0]
         stream.thread_type = "AUTO"
         tb = float(stream.time_base)
+        # Seek to the last keyframe before the first wanted time so a late episode in a
+        # shared file does not decode everything before it.
+        start = max(0.0, targets[0] - 0.5)
+        c.seek(int(start / tb), stream=stream, backward=True, any_frame=False)
         for frame in c.decode(stream):
             ts = frame.pts * tb
             while j < len(targets) and ts >= targets[j] - tol:
