@@ -102,7 +102,7 @@ def main() -> None:
         summary.append({"episode": ep_idx, "t_close": float(payload["t_close"]), "n_img": int(len(payload["img_t"])), "n_joint": int(len(payload["joint_t"]))})
         print(f"ep {ep_idx} ({i + 1}/{n})  close={payload['t_close']:.2f}s imgs={len(payload['img_t'])}  {(time.time() - t0) / (i + 1):.1f}s/ep", flush=True)
 
-    if args.delete_videos:
+    if args.delete_videos and any("t_close" in x for x in summary):
         for f in glob.glob(str(work / "videos" / "**" / "*.mp4"), recursive=True):
             os.remove(f)
     info = {

@@ -6,18 +6,23 @@ import numpy as np
 
 
 def find_gripper_close(t: np.ndarray, gripper: np.ndarray, min_travel: float = 5.0) -> float | None:
-    """Time of the first gripper closure.
+    """Time of the grasp: the first time the gripper crosses from open to closed.
 
-    The gripper starts open; we take its starting level from the first 5% of rows and its
-    closed level as the episode minimum, and return the first time it crosses halfway
-    between the two. None if it never travels more than `min_travel` units."""
-    open_level = float(np.median(gripper[: max(3, len(gripper) // 20)]))
-    closed_level = float(gripper.min())
-    if open_level - closed_level < min_travel:
+    Works whether the episode starts with the gripper open (hbseong) or closed
+    (5hadytru, which opens on the way to the object). Open/closed levels are the
+    episode max/min; the threshold is halfway. We first find the first row where the
+    gripper is open, then the first row after it where it is closed. None if the
+    gripper never travels more than `min_travel` units or never closes after opening."""
+    lo, hi = float(gripper.min()), float(gripper.max())
+    if hi - lo < min_travel:
         return None
-    thr = open_level - 0.5 * (open_level - closed_level)
-    below = np.where(gripper < thr)[0]
-    return float(t[below[0]]) if len(below) else None
+    thr = lo + 0.5 * (hi - lo)
+    is_open = gripper > thr
+    if not is_open.any():
+        return None
+    i_open = int(np.argmax(is_open))
+    after = np.where(~is_open[i_open:])[0]
+    return float(t[i_open + after[0]]) if len(after) else None
 
 
 def grid_indices(t: np.ndarray, hz: float, t_end: float | None = None) -> np.ndarray:
