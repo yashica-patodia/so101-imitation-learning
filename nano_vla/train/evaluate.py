@@ -11,7 +11,8 @@ from nano_vla import config as C
 
 
 @torch.no_grad()
-def evaluate(enc, probe, dl, stats: dict, device, target: str = "state") -> dict[str, np.ndarray]:
+def evaluate(enc, probe, dl, stats: dict, device, target: str = "state", key: str = "img") -> dict[str, np.ndarray]:
+    """key: "img" for DINOv2-feature encoders, "frm" for pixel encoders."""
     pre = "state" if target == "state" else "action"
     t_std = torch.as_tensor(stats[pre + "_std"], device=device)
     t_mean = torch.as_tensor(stats[pre + "_mean"], device=device)
@@ -21,8 +22,8 @@ def evaluate(enc, probe, dl, stats: dict, device, target: str = "state") -> dict
     n = 0
     steps = torch.arange(1, C.HORIZON + 1, device=device, dtype=torch.float32)[None, :, None]
     for batch in dl:
-        img, state, tgt = batch["img"].to(device), batch["state"].to(device), batch["target"].to(device)
-        tokens, _, keep = enc(img, state)
+        x, state, tgt = batch[key].to(device), batch["state"].to(device), batch["target"].to(device)
+        tokens, _, keep = enc(x, state)
         pred = probe(tokens, keep, batch["last"].to(device))
         raw_tgt, raw_pred = tgt * t_std + t_mean, pred * t_std + t_mean
         raw_state = state * s_std + s_mean
@@ -31,7 +32,7 @@ def evaluate(enc, probe, dl, stats: dict, device, target: str = "state") -> dict
         err["probe"] = err["probe"] + (raw_pred - raw_tgt).abs().sum(0)
         err["hold"] = err["hold"] + (hold - raw_tgt).abs().sum(0)
         err["linear"] = err["linear"] + (linear - raw_tgt).abs().sum(0)
-        n += img.shape[0]
+        n += x.shape[0]
     return {k: (v / n).cpu().numpy() for k, v in err.items()}  # each [HORIZON, 6]
 
 

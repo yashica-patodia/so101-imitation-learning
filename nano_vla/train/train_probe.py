@@ -3,7 +3,9 @@
 Three modes, all through the same script:
     --mae PATH               frozen pretrained encoder + probe (representation test)
     --mae PATH --unfreeze    pretrained init, fine-tune everything
-    --scratch                random-init encoder, trained end to end (direct policy)
+    --scratch                random-init DINOv2-feature encoder, trained end to end (direct policy)
+
+The encoder kind (feature-token MAE or pixel MAE) is read from the checkpoint.
 
     python -m nano_vla.train.train_probe --mae outputs/mae/best.pt --features data/features/grasp_1 --out outputs/probe
 """
@@ -18,15 +20,19 @@ import torch
 
 from nano_vla import config as C
 from nano_vla.models.mae import MAE, Encoder
+from nano_vla.models.pixel_mae import PixelMAE
 from nano_vla.models.probe import ActionProbe
 from nano_vla.train.common import JsonlLog, build_datasets, load_stats, loaders, pick_device, save_json, save_stats, seed_all
 from nano_vla.train.evaluate import evaluate, format_table
 
 
-def load_encoder(path: str, device) -> tuple[Encoder, dict]:
+def load_encoder(path: str, device) -> tuple[torch.nn.Module, dict]:
     ck = torch.load(path, map_location="cpu")
     cfg = ck["cfg"]
-    mae = MAE(cfg["n_cams"], cfg["n_patches"], cfg["feat_dim"], d=cfg["d"], depth=cfg["depth"])
+    if cfg.get("kind", "feature") == "pixel":
+        mae = PixelMAE(cfg["n_cams"], cfg["n_patches"], d=cfg["d"], depth=cfg["depth"], heads=cfg.get("heads", 6), dec_d=cfg.get("dec_d", 192), dec_depth=cfg.get("dec_depth", 4), dec_heads=cfg.get("dec_heads", 6))
+    else:
+        mae = MAE(cfg["n_cams"], cfg["n_patches"], cfg["feat_dim"], d=cfg["d"], depth=cfg["depth"])
     mae.load_state_dict(ck["model"])
     return mae.enc.to(device), cfg
 
@@ -35,8 +41,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--features", nargs="+", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--mae", default=None, help="pretrained MAE checkpoint")
-    ap.add_argument("--scratch", action="store_true", help="random-init encoder, train end to end")
+    ap.add_argument("--mae", default=None, help="pretrained MAE checkpoint (feature or pixel kind)")
+    ap.add_argument("--scratch", action="store_true", help="random-init feature encoder, train end to end")
     ap.add_argument("--unfreeze", action="store_true", help="fine-tune the encoder too (lr x0.1)")
     ap.add_argument("--init-probe", default=None, help="probe checkpoint to fine-tune from")
     ap.add_argument("--stats", default=None, help="stats.npz to reuse (fine-tuning); default: from --mae dir or recomputed")
@@ -49,6 +55,7 @@ def main() -> None:
     ap.add_argument("--val-frac", type=float, default=0.1)
     ap.add_argument("--d", type=int, default=C.D_MODEL)
     ap.add_argument("--depth", type=int, default=C.DEPTH)
+    ap.add_argument("--workers", type=int, default=2)
     args = ap.parse_args()
     if not args.mae and not args.scratch:
         ap.error("give --mae PATH or --scratch")
@@ -58,29 +65,35 @@ def main() -> None:
     device = pick_device()
     seed_all(0)
 
+    cfg = None
+    if args.mae:
+        enc, cfg = load_encoder(args.mae, device)
+    kind = (cfg or {}).get("kind", "feature")
+    mode = "pixel" if kind == "pixel" else "dino"
+    key = "frm" if kind == "pixel" else "img"
+
     stats = None
     if args.stats:
         stats = load_stats(Path(args.stats))
     elif args.mae and (Path(args.mae).parent / "stats.npz").exists():
         stats = load_stats(Path(args.mae).parent / "stats.npz")
-    train_ds, val_ds, stats, first = build_datasets(args.features, args.level, stats, args.stride, args.val_frac, args.target)
+    train_ds, val_ds, stats, first = build_datasets(args.features, args.level, stats, args.stride, args.val_frac, args.target, mode)
     save_stats(out, stats)
-    dl, vdl = loaders(train_ds, val_ds, args.batch)
-    print(f"train windows={len(train_ds)} val windows={len(val_ds)} device={device}")
+    dl, vdl = loaders(train_ds, val_ds, args.batch, args.workers)
+    print(f"kind={kind} train windows={len(train_ds)} val windows={len(val_ds)} device={device}", flush=True)
 
     if args.mae:
-        enc, cfg = load_encoder(args.mae, device)
         train_enc = args.unfreeze
     else:
-        cfg = {"n_cams": len(first.cams), "n_patches": first.n_patches, "feat_dim": first.feat_dim, "d": args.d, "depth": args.depth, "cams": first.cams}
+        cfg = {"kind": "feature", "n_cams": len(first.cams), "n_patches": first.n_patches, "feat_dim": first.feat_dim, "d": args.d, "depth": args.depth, "cams": first.cams}
         enc = Encoder(cfg["n_cams"], cfg["n_patches"], cfg["feat_dim"], args.d, args.depth).to(device)
         train_enc = True
     probe = ActionProbe(cfg["d"]).to(device)
     if args.init_probe:
         probe.load_state_dict(torch.load(args.init_probe, map_location="cpu")["probe"])
-    params = [{"params": probe.parameters(), "lr": args.lr}]
+    params = [{"params": list(probe.parameters()), "lr": args.lr}]
     if train_enc:
-        params.append({"params": enc.parameters(), "lr": args.lr * (1.0 if args.scratch else 0.1)})
+        params.append({"params": list(enc.parameters()), "lr": args.lr * (1.0 if args.scratch else 0.1)})
     else:
         for p in enc.parameters():
             p.requires_grad_(False)
@@ -94,12 +107,12 @@ def main() -> None:
         enc.train(train_enc)
         t0, tot = time.time(), 0.0
         for batch in dl:
-            img, state = batch["img"].to(device), batch["state"].to(device)
+            x, state = batch[key].to(device, non_blocking=True), batch["state"].to(device)
             if train_enc:
-                tokens, _, keep = enc(img, state)
+                tokens, _, keep = enc(x, state)
             else:
                 with torch.no_grad():
-                    tokens, _, keep = enc(img, state)
+                    tokens, _, keep = enc(x, state)
             pred = probe(tokens, keep, batch["last"].to(device))
             loss = torch.nn.functional.smooth_l1_loss(pred, batch["target"].to(device))
             opt.zero_grad(set_to_none=True)
@@ -110,10 +123,10 @@ def main() -> None:
             tot += loss.item()
         probe.eval()
         enc.eval()
-        err = evaluate(enc, probe, vdl, stats, device, args.target)
+        err = evaluate(enc, probe, vdl, stats, device, args.target, key)
         rec = {"epoch": epoch, "train_loss": tot / len(dl), "val_mae": {k: float(v.mean()) for k, v in err.items()}, "sec": time.time() - t0}
         log.write(rec)
-        print(f"ep {epoch:3d} train {rec['train_loss']:.4f}  val MAE probe {err['probe'].mean():.3f} | hold {err['hold'].mean():.3f} | linear {err['linear'].mean():.3f}  {rec['sec']:.0f}s")
+        print(f"ep {epoch:3d} train {rec['train_loss']:.4f}  val MAE probe {err['probe'].mean():.3f} | hold {err['hold'].mean():.3f} | linear {err['linear'].mean():.3f}  {rec['sec']:.0f}s", flush=True)
         ck = {"probe": probe.state_dict(), "encoder": enc.state_dict(), "cfg": cfg, "stats": {k: v.tolist() for k, v in stats.items()}, "target": args.target}
         torch.save(ck, out / "last.pt")
         if err["probe"].mean() < best:
