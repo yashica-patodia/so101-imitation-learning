@@ -45,6 +45,7 @@ def main() -> None:
     ap.add_argument("--scratch", action="store_true", help="random-init feature encoder, train end to end")
     ap.add_argument("--unfreeze", action="store_true", help="fine-tune the encoder too (lr x0.1)")
     ap.add_argument("--init-probe", default=None, help="probe checkpoint to fine-tune from")
+    ap.add_argument("--init-encoder", default=None, help="with --scratch: load the encoder weights from this probe checkpoint (fine-tuning a direct policy)")
     ap.add_argument("--stats", default=None, help="stats.npz to reuse (fine-tuning); default: from --mae dir or recomputed")
     ap.add_argument("--target", default="state", choices=["state", "action"])
     ap.add_argument("--level", default="A", choices=["A", "B"])
@@ -88,6 +89,11 @@ def main() -> None:
         cfg = {"kind": "feature", "n_cams": len(first.cams), "n_patches": first.n_patches, "feat_dim": first.feat_dim, "d": args.d, "depth": args.depth, "cams": first.cams}
         enc = Encoder(cfg["n_cams"], cfg["n_patches"], cfg["feat_dim"], args.d, args.depth).to(device)
         train_enc = True
+        if args.init_encoder:
+            src = torch.load(args.init_encoder, map_location="cpu")
+            enc.load_state_dict(src["encoder"])
+            cfg["cams"] = src["cfg"].get("cams", cfg["cams"])  # keep the camera order the encoder was trained with
+            print(f"encoder initialized from {args.init_encoder}", flush=True)
     probe = ActionProbe(cfg["d"]).to(device)
     if args.init_probe:
         probe.load_state_dict(torch.load(args.init_probe, map_location="cpu")["probe"])

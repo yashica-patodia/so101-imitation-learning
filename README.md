@@ -11,7 +11,7 @@ Start with [docs/proposal.md](docs/proposal.md), then [docs/plan.md](docs/plan.m
 ## Repository map
 
 ```
-docs/               proposal, 18-step plan, design decisions, calibration log
+docs/               proposal, plan, design decisions, results, robot-day checklist, calibration log
 robot/              hardware helpers: find ports, teleop tracking check, gripper calibration
 notebooks/          Kaggle notebooks: 01 extract, 02 DINOv2 arm (policy, feature MAE, probe), 03 pixel MAE arm
 nano_vla/           the Python package
@@ -29,6 +29,9 @@ nano_vla/           the Python package
     mae.py          encoder over DINOv2-feature tokens, OctoSense-style masking, MAE with light decoder
     pixel_mae.py    our encoder: MAE over raw 160x160 frames + joints, no pretrained vision
     probe.py        cross-attention action probe (HORIZON queries -> joints)
+  robot/
+    policy_runner.py hardware-free online policy: rolling window -> next 1 s of joints
+    run_policy.py   10 Hz loop on the real follower: --dry-run (torque off) or live with a per-tick cap
   train/
     common.py       device, seeds, dataset assembly, checkpoints, logging
     evaluate.py     per-joint error vs hold-last and linear baselines
