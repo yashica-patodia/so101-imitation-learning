@@ -12,10 +12,10 @@ from nano_vla import config as C
 from nano_vla.data.windows import EpisodeSet, WindowDataset
 
 CKPT = Path("outputs/kaggle_v1/dino_policy/best.pt")
-FEAT = Path("/private/tmp/claude-501/-Users-yashicap-research-Robotics-Project-1/7ab20af7-87a3-41f3-a219-8435439e619e/scratchpad/feat_v2")
+FEAT = Path("data/features/grasp_1_part")  # held-out 5hadytru episodes, same cameras as the policy
 
 
-@pytest.mark.skipif(not CKPT.exists() or not FEAT.exists(), reason="needs Kaggle checkpoint and local features")
+@pytest.mark.skipif(not CKPT.exists() or not (FEAT / "meta.json").exists(), reason="needs Kaggle checkpoint and local features")
 def test_online_matches_offline():
     from nano_vla.robot.policy_runner import PolicyRunner
 
@@ -24,7 +24,7 @@ def test_online_matches_offline():
     stats = {k: v.cpu().numpy() for k, v in runner.stats.items()}
     ds = WindowDataset(eps, stats, 0.1)
     e = eps.episodes[0]
-    cams = eps.cams  # local test set cams (top, right) stand in for the policy's (front, overhead)
+    cams = eps.cams
     # feed the episode online up to the first window's end, then predict
     ei, is_, js = ds.index[5]
     for k in range(js, js + C.T_JOINT):
