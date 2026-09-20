@@ -6,7 +6,7 @@ encoders under one shared probe head: frozen DINOv2 (baseline) versus a masked
 autoencoder trained from scratch on the robot's own pixels (ours), following the
 evaluation protocol of the OctoSense paper (arXiv 2606.27317).
 
-Start with [docs/proposal.md](docs/proposal.md), then [docs/plan.md](docs/plan.md).
+Start with [docs/proposal.md](docs/proposal.md), then [docs/plan.md](docs/plan.md). What was run where, with links to every Kaggle notebook, script and dataset: [docs/runs.md](docs/runs.md). Numbers: [docs/results.md](docs/results.md).
 
 ## Repository map
 
