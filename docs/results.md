@@ -47,3 +47,36 @@ features (5.45). The end-to-end DINOv2 policy (5.09) remains the best single
 number because its encoder is trained on the task. Both trained rows beat hold-last
 at every step and linear from 0.2 s on. Next: both arms fine-tuned on our own
 episodes, then the same 20 positions on the robot.
+
+## 2026-09-19 — sanity check: do the models use the images? (nano_vla/train/ablate.py)
+
+Held-out set: first 75 episodes of 5hadytru/so101_grasp_1 (same lab and rig as the
+training set grasp_2, but a separate recording batch the models never saw). 1162 windows.
+Mean joint error in degrees over the 1 s horizon.
+
+| condition | DINOv2 direct policy | frozen feature-MAE probe |
+|---|---|---|
+| correct images | 7.02 | 7.27 |
+| images from a different episode | 8.23 | 7.92 |
+| no images (all image tokens masked) | 8.61 | 11.89 |
+| hold-last baseline | 8.17 | 8.17 |
+| linear baseline | 9.08 | 9.08 |
+
+Split by what the arm was doing in the 1 s of input (direct policy):
+
+| windows | policy | wrong images | hold-last | linear |
+|---|---|---|---|---|
+| arm still (<2 deg of motion), n=245 | 5.55 | 6.12 | 5.44 | 5.40 |
+| arm already moving, n=917 | 7.41 | 8.83 | 8.90 | 10.06 |
+
+Reading:
+- The images matter: with the wrong episode's images the policy drops to the hold-last level.
+- The advantage is much smaller on this separate batch (7.0 vs 8.2, 14%) than on the
+  grasp_2 validation split (5.1 vs 9.0, 43%). The grasp_2 split is the last 10% of
+  episodes of the same sessions as training, so it likely overstates generalization.
+- When the arm is at rest the policy is no better than hold-last. It refines a motion
+  already under way; it has not learned to start the reach from vision alone. This is
+  the main risk for the real robot, which starts every trial at rest.
+- The pixel-MAE vs DINOv2 comparison (5.38 vs 5.45) is a single run on the grasp_2
+  split with encoders of different size (20M vs 3.8M). Treat as "comparable", not as a
+  finding, until repeated on the separate batch (notebook 04).
