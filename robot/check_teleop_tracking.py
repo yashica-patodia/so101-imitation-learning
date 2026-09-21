@@ -10,7 +10,7 @@ leader roughly matching the follower before starting. Motion per cycle is
 clamped by --max-relative-target as an extra guard.
 
 Usage:
-  python scripts/check_teleop_tracking.py \
+  python robot/check_teleop_tracking.py \
       --leader-port /dev/tty.usbmodemXXX --follower-port /dev/tty.usbmodemYYY \
       --seconds 20
 """

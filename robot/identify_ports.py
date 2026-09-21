@@ -4,7 +4,7 @@ Connects to both SO-101 arms read-only (no torque, nothing moves), then asks
 you to wiggle the LEADER arm. The port whose motor positions change is the
 leader. Prints the ready-to-use teleoperate command at the end.
 
-Usage: python scripts/identify_ports.py
+Usage: python robot/identify_ports.py
 """
 
 import glob
