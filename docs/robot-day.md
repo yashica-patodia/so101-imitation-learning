@@ -3,6 +3,20 @@
 Everything below runs on the MacBook with the project venv, from the repo root.
 Times are rough. Keep the kill switch (Ctrl+C) reachable whenever torque is on.
 
+## Hardware on this setup (checked 2026-09-20)
+
+| Device | Address |
+|---|---|
+| Leader arm | `/dev/tty.usbmodem5C821075291` (calibration id `my_leader`) |
+| Follower arm | `/dev/tty.usbmodem5C821086091` (calibration id `my_follower`) |
+| Scene camera, used as `overhead` | OpenCV index 0 (1920x1080 native, recorded at 640x480) |
+| Wrist camera, used as `front` | OpenCV index 1 (640x480), rotated 180 so the jaws are at the bottom |
+| Ignore | index 2 = MacBook webcam, index 3 = blank virtual camera |
+
+Ports come from the USB serial number, so they stay the same across reboots. Camera
+indices can shift if a camera is unplugged or an iPhone is nearby: rerun
+`lerobot-find-cameras opencv` if a view looks wrong.
+
 ## 0. Before touching the arm (5 min)
 
 ```bash
@@ -23,9 +37,9 @@ left / right. Last third: add a small lift after the close (for Level B).
 
 ```bash
 .venv/bin/lerobot-record \
-  --robot.type=so101_follower --robot.port=/dev/tty.usbmodemFOLLOWER --robot.id=my_follower \
+  --robot.type=so101_follower --robot.port=/dev/tty.usbmodem5C821086091 --robot.id=my_follower \
   --robot.cameras='{"overhead": {"type": "opencv", "index_or_path": 0, "width": 640, "height": 480, "fps": 30}, "front": {"type": "opencv", "index_or_path": 1, "width": 640, "height": 480, "fps": 30, "rotation": 180}}' \
-  --teleop.type=so101_leader --teleop.port=/dev/tty.usbmodemLEADER --teleop.id=my_leader \
+  --teleop.type=so101_leader --teleop.port=/dev/tty.usbmodem5C821075291 --teleop.id=my_leader \
   --dataset.repo_id=yashica/so101_grasp_ours --dataset.root=data/ours \
   --dataset.num_episodes=80 --dataset.episode_time_s=8 --dataset.reset_time_s=5 \
   --dataset.single_task="grasp the object" --dataset.push_to_hub=false
@@ -67,7 +81,7 @@ more episodes before going live.
 
 ```bash
 .venv/bin/python -m nano_vla.robot.run_policy --checkpoint outputs/policy_ours/best.pt \
-    --port /dev/tty.usbmodemFOLLOWER --cam front=1 --cam overhead=0 --rotate front=180 --dry-run --duration 60 --log outputs/dry_run.jsonl
+    --port /dev/tty.usbmodem5C821086091 --cam front=1 --cam overhead=0 --rotate front=180 --dry-run --duration 60 --log outputs/dry_run.jsonl
 ```
 
 Move the arm through a grasp by hand or with the leader (leader teleop in a second
@@ -81,7 +95,7 @@ Object in the easiest spot, arm at rest, hand on Ctrl+C.
 
 ```bash
 .venv/bin/python -m nano_vla.robot.run_policy --checkpoint outputs/policy_ours/best.pt \
-    --port /dev/tty.usbmodemFOLLOWER --cam front=1 --cam overhead=0 --rotate front=180 --duration 12 --max-delta 6 --log outputs/live_01.jsonl
+    --port /dev/tty.usbmodem5C821086091 --cam front=1 --cam overhead=0 --rotate front=180 --duration 12 --max-delta 6 --log outputs/live_01.jsonl
 ```
 
 Watch three attempts. Note the failure mode: reaching short, closing early, hesitating.
