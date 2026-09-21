@@ -24,12 +24,18 @@ left / right. Last third: add a small lift after the close (for Level B).
 ```bash
 .venv/bin/lerobot-record \
   --robot.type=so101_follower --robot.port=/dev/tty.usbmodemFOLLOWER --robot.id=my_follower \
-  --robot.cameras='{"overhead": {"type": "opencv", "index_or_path": 0, "width": 640, "height": 480, "fps": 30}, "front": {"type": "opencv", "index_or_path": 1, "width": 640, "height": 480, "fps": 30}}' \
+  --robot.cameras='{"overhead": {"type": "opencv", "index_or_path": 0, "width": 640, "height": 480, "fps": 30}, "front": {"type": "opencv", "index_or_path": 1, "width": 640, "height": 480, "fps": 30, "rotation": 180}}' \
   --teleop.type=so101_leader --teleop.port=/dev/tty.usbmodemLEADER --teleop.id=my_leader \
   --dataset.repo_id=yashica/so101_grasp_ours --dataset.root=data/ours \
   --dataset.num_episodes=80 --dataset.episode_time_s=8 --dataset.reset_time_s=5 \
   --dataset.single_task="grasp the object" --dataset.push_to_hub=false
 ```
+
+`"rotation": 180` on the wrist camera: on our mount the jaws appear at the TOP of the
+frame, while in the training data they are at the bottom. Rotating makes our view match
+what the pretrained encoders saw. Check one captured frame before recording; drop the
+rotation if your jaws already appear at the bottom. Use the same rotation when running
+the policy (`--rotate front=180`).
 
 Camera names in the dataset must be exactly `overhead` and `front` (that is what the
 policy checkpoint expects). Camera indices: replace 0 / 1 with what step 0 printed.
@@ -61,7 +67,7 @@ more episodes before going live.
 
 ```bash
 .venv/bin/python -m nano_vla.robot.run_policy --checkpoint outputs/policy_ours/best.pt \
-    --port /dev/tty.usbmodemFOLLOWER --cam front=1 --cam overhead=0 --dry-run --duration 60 --log outputs/dry_run.jsonl
+    --port /dev/tty.usbmodemFOLLOWER --cam front=1 --cam overhead=0 --rotate front=180 --dry-run --duration 60 --log outputs/dry_run.jsonl
 ```
 
 Move the arm through a grasp by hand or with the leader (leader teleop in a second
@@ -75,7 +81,7 @@ Object in the easiest spot, arm at rest, hand on Ctrl+C.
 
 ```bash
 .venv/bin/python -m nano_vla.robot.run_policy --checkpoint outputs/policy_ours/best.pt \
-    --port /dev/tty.usbmodemFOLLOWER --cam front=1 --cam overhead=0 --duration 12 --max-delta 6 --log outputs/live_01.jsonl
+    --port /dev/tty.usbmodemFOLLOWER --cam front=1 --cam overhead=0 --rotate front=180 --duration 12 --max-delta 6 --log outputs/live_01.jsonl
 ```
 
 Watch three attempts. Note the failure mode: reaching short, closing early, hesitating.

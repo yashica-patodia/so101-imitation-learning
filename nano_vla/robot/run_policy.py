@@ -52,6 +52,7 @@ def main() -> None:
     ap.add_argument("--port", required=True, help="follower serial port")
     ap.add_argument("--id", default="my_follower", help="calibration id")
     ap.add_argument("--cam", action="append", default=[], help="name=index, one per policy camera")
+    ap.add_argument("--rotate", action="append", default=[], help="name=degrees (0/90/180/-90); must match how the episodes were recorded")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--replan", type=int, default=3, help="ticks between chunk predictions (live)")
     ap.add_argument("--max-delta", type=float, default=8.0, help="max joint change per tick, degrees (live)")
@@ -67,7 +68,10 @@ def main() -> None:
     missing = [c for c in runner.cams if c not in cam_map]
     if missing:
         raise SystemExit(f"policy needs cameras {runner.cams}; give --cam for {missing}")
-    cameras = {c: OpenCVCameraConfig(index_or_path=cam_map[c], width=640, height=480, fps=30) for c in runner.cams}
+    from lerobot.cameras.configs import Cv2Rotation
+
+    rot = {k: Cv2Rotation(int(v)) for k, v in (it.split("=", 1) for it in args.rotate)}
+    cameras = {c: OpenCVCameraConfig(index_or_path=cam_map[c], width=640, height=480, fps=30, rotation=rot.get(c, Cv2Rotation.NO_ROTATION)) for c in runner.cams}
     follower = SOFollower(SOFollowerRobotConfig(port=args.port, id=args.id, cameras=cameras, max_relative_target=None if args.dry_run else args.max_delta))
     print(f"policy kind={runner.kind} cams={runner.cams} device={runner.device}; {'DRY RUN (torque off)' if args.dry_run else 'LIVE'}")
     follower.connect()
